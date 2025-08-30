@@ -6,12 +6,11 @@ import java.util.regex.Pattern;
 
 public class Main {
 
-    // ---- Early-invalid shares (bad digits/base) ----
     static final Set<Integer> EARLY_BAD = new HashSet<>();
 
-    // ---- Exact Rational arithmetic with BigInteger ----
+
     static final class Rational {
-        BigInteger num, den; // den > 0
+        BigInteger num, den; 
         Rational(BigInteger n, BigInteger d) {
             if (d.signum() == 0) throw new IllegalArgumentException("Zero denominator");
             if (d.signum() < 0) { n = n.negate(); d = d.negate(); }
@@ -56,10 +55,10 @@ public class Main {
     }
 
     static final class Share {
-        int x;               // x coordinate (from JSON key)
-        int base;            // radix declared
-        String raw;          // value digits in 'base'
-        BigInteger y;        // parsed y
+        int x;               
+        int base;            
+        String raw;          
+        BigInteger y;       
     }
 
     public static void main(String[] args) throws Exception {
@@ -69,7 +68,7 @@ public class Main {
 
         List<Share> shares = parseShares(json);
 
-        // If too few valid shares, report gracefully and exit
+        
         if (shares.size() < k) {
             List<Integer> wrong = new ArrayList<>(EARLY_BAD);
             Collections.sort(wrong);
@@ -83,17 +82,17 @@ public class Main {
             return;
         }
 
-        // 1) Compute c0 (constant) over all size-k subsets via Gaussian elimination on Vandermonde
+       
         Map<Rational, Integer> freq = new HashMap<>();
         List<int[]> kCombos = combinations(shares.size(), k);
         for (int[] idx : kCombos) {
             List<Share> sub = subset(shares, idx);
             try {
-                List<Rational> coeffs = solveVandermonde(sub); // c0..c_{k-1}
+                List<Rational> coeffs = solveVandermonde(sub); 
                 Rational c0 = coeffs.get(0);
                 freq.merge(c0, 1, Integer::sum);
             } catch (RuntimeException e) {
-                // singular/degenerate (shouldn’t happen with distinct x), skip
+                
             }
         }
         Map.Entry<Rational,Integer> modalEntry = freq.entrySet().stream()
@@ -103,7 +102,7 @@ public class Main {
         int totalCombos = kCombos.size();
 
         if (!modal.isInteger()) {
-            // Extremely unlikely with integer shares; handle gracefully
+            
             System.out.println("Secret: (undetermined)");
             System.out.println("Reason: Modal secret is not an integer: " + modal);
             List<Integer> wrong = new ArrayList<>(EARLY_BAD);
@@ -117,7 +116,7 @@ public class Main {
         }
         BigInteger secret = modal.asInteger();
 
-        // 2) Choose one good k-subset that yields modal secret; use it to evaluate all shares
+        
         List<Rational> goodCoeffs = null;
         for (int[] idx : kCombos) {
             List<Share> sub = subset(shares, idx);
@@ -139,7 +138,7 @@ public class Main {
             return;
         }
 
-        // 3) Check each share against the reconstructed polynomial
+       
         Set<Integer> wrongSet = new TreeSet<>();
         for (Share s : shares) {
             Rational pred = evalPoly(goodCoeffs, BigInteger.valueOf(s.x));
@@ -149,12 +148,12 @@ public class Main {
         }
         wrongSet.addAll(EARLY_BAD);
 
-        // 4) Scores
+       
         int wrongCount = wrongSet.size();
         int accuracy100 = (int)Math.round(100.0 * (n - wrongCount) / Math.max(1, n));
         int consensus100 = (int)Math.round(100.0 * modalCount / Math.max(1, totalCombos));
 
-        // 5) Output
+        
         System.out.println("Secret: " + secret);
         if (wrongSet.isEmpty()) {
             System.out.println("Wrong shares: (none detected)");
@@ -165,24 +164,23 @@ public class Main {
         System.out.println("Consensus confidence (k-subset agreement) : " + consensus100 + "/100");
     }
 
-    // ===== Vandermonde system: build A and solve A*c = y with Gaussian Elimination =====
-    // Given k points (x_i, y_i), degree = k-1, A[i][j] = x_i^j, unknowns c[j], y[i] known.
+    
     static List<Rational> solveVandermonde(List<Share> pts) {
         final int k = pts.size();
-        Rational[][] aug = new Rational[k][k + 1]; // augmented matrix [A | y]
+        Rational[][] aug = new Rational[k][k + 1]; 
         for (int i = 0; i < k; i++) {
             BigInteger xi = BigInteger.valueOf(pts.get(i).x);
-            // Precompute powers of xi: xi^0 .. xi^{k-1}
+            
             BigInteger pow = BigInteger.ONE;
             for (int j = 0; j < k; j++) {
                 aug[i][j] = Rational.of(pow);
                 pow = pow.multiply(xi);
             }
-            aug[i][k] = new Rational(pts.get(i).y, BigInteger.ONE); // RHS y_i
+            aug[i][k] = new Rational(pts.get(i).y, BigInteger.ONE); 
         }
-        // Gaussian elimination with partial pivoting (exact rationals)
+       
         gaussEliminate(aug);
-        // Back substitution
+       
         Rational[] c = new Rational[k];
         for (int i = k - 1; i >= 0; i--) {
             Rational sum = Rational.of(BigInteger.ZERO);
@@ -198,19 +196,19 @@ public class Main {
 
     static void gaussEliminate(Rational[][] a) {
         int n = a.length;
-        int m = a[0].length; // k+1
+        int m = a[0].length; 
         for (int col = 0, row = 0; col < n && row < n; col++, row++) {
-            // Pivot: find non-zero in [row..n-1] at column col
+            
             int piv = row;
             while (piv < n && a[piv][col].isZero()) piv++;
             if (piv == n) throw new RuntimeException("Singular matrix (no pivot)");
             if (piv != row) {
                 Rational[] tmp = a[piv]; a[piv] = a[row]; a[row] = tmp;
             }
-            // Normalize pivot row to make pivot = 1
+            
             Rational pivVal = a[row][col];
             for (int j = col; j < m; j++) a[row][j] = a[row][j].div(pivVal);
-            // Eliminate other rows
+            
             for (int r = 0; r < n; r++) {
                 if (r == row) continue;
                 Rational factor = a[r][col];
@@ -222,7 +220,7 @@ public class Main {
         }
     }
 
-    // Evaluate polynomial c0 + c1 x + ... + c_{k-1} x^{k-1} at X (exactly)
+   
     static Rational evalPoly(List<Rational> coeffs, BigInteger X) {
         Rational sum = Rational.of(BigInteger.ZERO);
         Rational xpow = Rational.of(BigInteger.ONE);
@@ -234,7 +232,7 @@ public class Main {
         return sum;
     }
 
-    // ---- Combinatorics ----
+    
     static List<int[]> combinations(int n, int k) {
         List<int[]> res = new ArrayList<>();
         if (k < 0 || k > n) return res;
@@ -256,7 +254,7 @@ public class Main {
         return out;
     }
 
-    // ---- JSON parsing ----
+    
     static String readAll() throws IOException {
         try (BufferedReader br = new BufferedReader(new InputStreamReader(System.in))) {
             StringBuilder sb = new StringBuilder();
@@ -305,3 +303,4 @@ public class Main {
         return out;
     }
 }
+
